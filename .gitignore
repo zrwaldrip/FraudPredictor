@@ -1,0 +1,21 @@
+# --- Frontend / General ---
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+
+# --- Backend (.NET) ---
+bin/
+obj/
+*.log
+*.tlog
+
+# --- IDEs and Editors ---
+.vscode/
+.idea/
+.vs/
+*.suo
+*.user
+*.sln.docstates
