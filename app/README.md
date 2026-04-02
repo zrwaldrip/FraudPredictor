@@ -1,29 +1,27 @@
 # IS455 — Web app (Next.js)
 
-Operational database: **`shop.db`** (SQLite) at the repository root (`../shop.db` when this app runs from the `web/` folder).
+Operational database: **`shop.db`** (SQLite) at the **repository root** (`../shop.db` when you run commands from this `app/` directory).
 
 ## Local development
-
-From the `web/` directory:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Ensure `../shop.db` exists (same folder as this `web/` directory’s parent).
+Ensure `../shop.db` exists (parent of this folder is the repo root).
 
 ## Environment
 
 | Variable         | Meaning |
 |------------------|---------|
-| `DATABASE_PATH`  | Optional absolute path to `shop.db`. If unset, defaults to `../shop.db` relative to the process cwd (usually `web/`). |
+| `DATABASE_PATH`  | Optional absolute path to `shop.db`. If unset, defaults to `../shop.db` relative to the process cwd (this `app/` folder). |
 
 ## Vercel deployment
 
-1. Create a Vercel project and set **Root Directory** to `web`.
+1. Create a Vercel project and set **Root Directory** to **`app`**.
 2. Add environment variable `DATABASE_PATH` if your hosted `shop.db` lives somewhere other than the default relative path.
-3. **SQLite on serverless**: Vercel’s default serverless filesystem is not a durable writable database volume. For production you may need **persistent storage** (e.g. mounted volume on another host), **Turso/libSQL**, or another managed SQLite-compatible service. The app code uses `better-sqlite3` against a file path so swapping the connection layer later is straightforward.
+3. **SQLite on serverless**: Vercel’s default serverless filesystem is not a durable writable database volume. For production you may need **persistent storage** (e.g. mounted volume on another host), **Turso/libSQL**, or another managed SQLite-compatible service.
 
 ## Course features (Part 1)
 

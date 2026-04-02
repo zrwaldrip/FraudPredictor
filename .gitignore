@@ -1,5 +1,7 @@
 # --- Frontend / General ---
 node_modules/
+# Removed Vite app (delete leftover folder if a dev server locked files)
+app/frontend/
 dist/
 dist-ssr/
 *.local
