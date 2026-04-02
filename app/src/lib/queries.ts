@@ -131,3 +131,27 @@ export function listActiveProducts(): ProductRow[] {
     )
     .all() as ProductRow[];
 }
+
+export type AdminOrderRow = {
+  order_id: number;
+  order_datetime: string;
+  customer_id: number;
+  customer_name: string;
+  order_total: number;
+  risk_score: number;
+  is_fraud: number;
+};
+
+export function listAllOrdersForAdmin(limit = 1000): AdminOrderRow[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT o.order_id, o.order_datetime, o.customer_id, c.full_name AS customer_name,
+              o.order_total, o.risk_score, o.is_fraud
+       FROM orders o
+       JOIN customers c ON c.customer_id = o.customer_id
+       ORDER BY o.order_datetime DESC
+       LIMIT ?`,
+    )
+    .all(limit) as AdminOrderRow[];
+}
