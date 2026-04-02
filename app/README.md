@@ -32,6 +32,13 @@ Ensure `../shop.db` exists (parent of this folder is the repo root).
 | `/orders/new` | Place new order → writes `orders`, `order_items`, `shipments` |
 | `/orders` | Order history for selected customer |
 | `/warehouse` | Late delivery priority queue (top 50 by `late_delivery_probability`) |
-| `POST /api/ml/score` | Runs scoring job; updates `shipments.late_delivery_probability` |
+| `POST /api/ml/score` | Runs warehouse scoring; updates `shipments.late_delivery_probability` |
+| `POST /api/cron/fraud-train` | Runs full JS fraud training pipeline; writes `artifacts/fraud_pipeline.json` |
 
 The first time you open the app, the migration adds `late_delivery_probability` to `shipments` if it is missing.
+
+## Cron pipeline
+
+`app/vercel.json` schedules `POST /api/cron/fraud-train` daily at 03:00 UTC.
+
+Set `CRON_SECRET` in Vercel and send it as `x-cron-secret` when manually invoking the route.

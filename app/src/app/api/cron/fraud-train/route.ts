@@ -1,0 +1,34 @@
+import path from "path";
+import { NextResponse } from "next/server";
+import { getDb } from "@/lib/db";
+import { runFraudNotebookPipeline } from "@/lib/fraudNotebookPipeline";
+
+export const runtime = "nodejs";
+
+function isAuthorized(request: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return true;
+  const header = request.headers.get("x-cron-secret");
+  return header === secret;
+}
+
+/**
+ * POST /api/cron/fraud-train
+ * Runs the JavaScript port of the Chapter17 fraud notebook and writes
+ * artifacts to app/artifacts/fraud_pipeline.json.
+ */
+export async function POST(request: Request) {
+  try {
+    if (!isAuthorized(request)) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+    const db = getDb();
+    const artifactPath = path.join(process.cwd(), "artifacts", "fraud_pipeline.json");
+    const report = runFraudNotebookPipeline(db, { artifactPath });
+    return NextResponse.json({ ok: true, report });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Fraud training failed";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
