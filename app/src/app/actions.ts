@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
+import { runFraudPipelineAndWriteback } from "@/lib/fraudNotebookPipeline";
 import { runLateDeliveryScoringJob } from "@/lib/scoring";
 
 const COOKIE = "acting_customer_id";
@@ -142,4 +143,38 @@ export async function runScoring() {
   const n = runLateDeliveryScoringJob(db);
   revalidatePath("/warehouse");
   return { ok: true as const, updated: n };
+}
+
+export async function setPipelineFraudStatus(formData: FormData) {
+  const rawOrderId = formData.get("order_id");
+  const rawPrediction = formData.get("prediction");
+  const orderId =
+    typeof rawOrderId === "string" ? Number.parseInt(rawOrderId, 10) : NaN;
+  const prediction =
+    typeof rawPrediction === "string"
+      ? Number.parseInt(rawPrediction, 10)
+      : NaN;
+
+  if (!Number.isFinite(orderId) || orderId < 1) {
+    return;
+  }
+  if (prediction !== 0 && prediction !== 1) {
+    return;
+  }
+
+  const db = getDb();
+  const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+  db.prepare(
+    `UPDATE orders
+     SET fraud_prediction = ?, fraud_scored_at = ?
+     WHERE order_id = ?`,
+  ).run(prediction, now, orderId);
+
+  revalidatePath("/admin/orders");
+}
+
+export async function runFraudPipelineNow() {
+  const db = getDb();
+  runFraudPipelineAndWriteback(db);
+  revalidatePath("/admin/orders");
 }

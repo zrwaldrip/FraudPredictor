@@ -1,7 +1,9 @@
 import path from "path";
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { runFraudNotebookPipeline } from "@/lib/fraudNotebookPipeline";
+import {
+  runFraudPipelineAndWriteback,
+} from "@/lib/fraudNotebookPipeline";
 
 export const runtime = "nodejs";
 
@@ -24,8 +26,16 @@ export async function POST(request: Request) {
     }
     const db = getDb();
     const artifactPath = path.join(process.cwd(), "artifacts", "fraud_pipeline.json");
-    const report = runFraudNotebookPipeline(db, { artifactPath });
-    return NextResponse.json({ ok: true, report });
+    const { report, updated, scored_at } = runFraudPipelineAndWriteback(
+      db,
+      artifactPath,
+    );
+
+    return NextResponse.json({
+      ok: true,
+      report,
+      writeback: { updated, scored_at },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Fraud training failed";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

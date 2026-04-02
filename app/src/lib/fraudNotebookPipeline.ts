@@ -3,7 +3,7 @@ import path from "path";
 import type Database from "better-sqlite3";
 import { RandomForestClassifier } from "ml-random-forest";
 
-type Row = Record<string, unknown>;
+export type Row = Record<string, unknown>;
 
 type TrainedPreprocessor = {
   featureColumns: string[];
@@ -637,6 +637,13 @@ function joinRelationalTables(database: Database.Database, orders: Row[]): Row[]
   return model;
 }
 
+export function buildFraudScoringRows(database: Database.Database): Row[] {
+  const orders = database.prepare(`SELECT * FROM orders`).all() as Row[];
+  if (!orders.length) return [];
+  const enriched = joinRelationalTables(database, orders);
+  return engineerDateFeatures(enriched);
+}
+
 function savePipelineArtifacts(artifactPath: string, artifact: PipelineArtifact): void {
   const dir = path.dirname(artifactPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -851,5 +858,43 @@ export function scoreNewOrdersWithArtifact(
       };
     })
     .sort((a, b) => b.fraud_probability - a.fraud_probability);
+}
+
+export function runFraudPipelineAndWriteback(
+  database: Database.Database,
+  artifactPath = path.join(process.cwd(), "artifacts", "fraud_pipeline.json"),
+): {
+  report: NotebookParityReport;
+  updated: number;
+  scored_at: string;
+} {
+  const report = runFraudNotebookPipeline(database, { artifactPath });
+  const artifact = loadFraudPipelineArtifact(artifactPath);
+  const scoringRows = buildFraudScoringRows(database);
+  const scored = scoreNewOrdersWithArtifact(scoringRows, artifact);
+  const scoredAt = new Date().toISOString().replace("T", " ").slice(0, 19);
+
+  const update = database.prepare(
+    `UPDATE orders
+     SET fraud_prediction = ?, fraud_probability = ?, fraud_scored_at = ?
+     WHERE order_id = ?`,
+  );
+  const tx = database.transaction(() => {
+    for (const row of scored) {
+      const orderId = Number(row.order_id);
+      if (!Number.isFinite(orderId) || orderId < 1) continue;
+      const prediction = Number(row.fraud_prediction) === 1 ? 1 : 0;
+      const probability = Number(row.fraud_probability);
+      update.run(
+        prediction,
+        Number.isFinite(probability) ? probability : null,
+        scoredAt,
+        orderId,
+      );
+    }
+  });
+  tx();
+
+  return { report, updated: scored.length, scored_at: scoredAt };
 }
 
