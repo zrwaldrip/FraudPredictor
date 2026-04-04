@@ -25,7 +25,8 @@ function isAuthorized(request: Request): boolean {
  * GET — Vercel Cron invokes this method (vercel-cron/1.0).
  * POST — manual triggers (curl, etc.).
  * Runs the JS fraud notebook pipeline and writes scores to `orders`.
- * Artifact path: tmp on Vercel, else app/artifacts/fraud_pipeline.json.
+ * With `FRAUD_PIPELINE_MODE=inference`, loads the bundled artifact only (no full train).
+ * Full-train artifact path: `/tmp` on Vercel, else `app/artifacts/fraud_pipeline.json` locally.
  */
 async function runFraudTrain(request: Request) {
   try {

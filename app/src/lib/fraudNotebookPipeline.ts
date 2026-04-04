@@ -2,15 +2,26 @@ import fs from "fs";
 import os from "node:os";
 import path from "path";
 import type { Sql } from "@/lib/db";
+import { RandomForestClassifier } from "ml-random-forest";
 
-/** Writable path for serialized model; /tmp on Vercel (read-only app dir). */
+/** Writable path for serialized model during full training; /tmp on Vercel (read-only app dir). */
 export function fraudPipelineArtifactPath(): string {
   if (process.env.VERCEL === "1") {
     return path.join(os.tmpdir(), "fraud_pipeline.json");
   }
   return path.join(process.cwd(), "artifacts", "fraud_pipeline.json");
 }
-import { RandomForestClassifier } from "ml-random-forest";
+
+/** Committed artifact used in inference-only mode (cron loads this from the deployment bundle). */
+export function bundledFraudArtifactPath(): string {
+  return path.join(process.cwd(), "artifacts", "fraud_pipeline.json");
+}
+
+export function resolveInferenceArtifactReadPath(): string {
+  const p = process.env.FRAUD_ARTIFACT_PATH?.trim();
+  if (p) return path.isAbsolute(p) ? p : path.join(process.cwd(), p);
+  return bundledFraudArtifactPath();
+}
 
 export type Row = Record<string, unknown>;
 
@@ -880,6 +891,63 @@ export function scoreNewOrdersWithArtifact(
     .sort((a, b) => b.fraud_probability - a.fraud_probability);
 }
 
+function inferenceOnlyParityReport(artifactPath: string): NotebookParityReport {
+  return {
+    tableNames: [],
+    rowCounts: [],
+    modelShape: { rows: 0, cols: 0 },
+    droppedColumns: [],
+    initialModelMetrics: [
+      {
+        model: "inference_only",
+        note: "Training skipped; loaded committed JS artifact",
+      },
+    ],
+    tunedModelMetrics: {},
+    optimalThreshold: 0,
+    topFeatureImportances: [],
+    artifactPath,
+  };
+}
+
+export async function runFraudInferenceOnlyWriteback(
+  sql: Sql,
+  artifactPath = resolveInferenceArtifactReadPath(),
+): Promise<{
+  updated: number;
+  scored_at: string;
+  artifactPath: string;
+}> {
+  if (!fs.existsSync(artifactPath)) {
+    throw new Error(
+      `Fraud artifact not found at ${artifactPath}. Set FRAUD_ARTIFACT_PATH or add app/artifacts/fraud_pipeline.json. Generate locally: npm run train:fraud (requires DATABASE_URL).`,
+    );
+  }
+  const artifact = loadFraudPipelineArtifact(artifactPath);
+  const scoringRows = await buildFraudScoringRows(sql);
+  const scored = scoreNewOrdersWithArtifact(scoringRows, artifact);
+  const scoredAt = new Date().toISOString().replace("T", " ").slice(0, 19);
+
+  await sql.begin(async (tx) => {
+    const t = tx as unknown as Sql;
+    for (const row of scored) {
+      const orderId = Number(row.order_id);
+      if (!Number.isFinite(orderId) || orderId < 1) continue;
+      const prediction = Number(row.fraud_prediction) === 1 ? 1 : 0;
+      const probability = Number(row.fraud_probability);
+      await t`
+        UPDATE orders
+        SET fraud_prediction = ${prediction},
+            fraud_probability = ${Number.isFinite(probability) ? probability : null},
+            fraud_scored_at = ${scoredAt}
+        WHERE order_id = ${orderId}
+      `;
+    }
+  });
+
+  return { updated: scored.length, scored_at: scoredAt, artifactPath };
+}
+
 export async function runFraudPipelineAndWriteback(
   sql: Sql,
   artifactPath = fraudPipelineArtifactPath(),
@@ -888,6 +956,19 @@ export async function runFraudPipelineAndWriteback(
   updated: number;
   scored_at: string;
 }> {
+  if (process.env.FRAUD_PIPELINE_MODE === "inference") {
+    const readPath = resolveInferenceArtifactReadPath();
+    const { updated, scored_at } = await runFraudInferenceOnlyWriteback(
+      sql,
+      readPath,
+    );
+    return {
+      report: inferenceOnlyParityReport(readPath),
+      updated,
+      scored_at,
+    };
+  }
+
   const report = await runFraudNotebookPipeline(sql, { artifactPath });
   const artifact = loadFraudPipelineArtifact(artifactPath);
   const scoringRows = await buildFraudScoringRows(sql);
