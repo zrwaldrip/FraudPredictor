@@ -1,56 +1,26 @@
-import fs from "fs";
-import path from "path";
-import Database from "better-sqlite3";
+import postgres from "postgres";
 
-let db: Database.Database | null = null;
+export type Sql = ReturnType<typeof postgres>;
+
+let sql: Sql | null = null;
 
 /**
- * Resolve path to operational SQLite DB (shop.db at repo root by default).
- * Override with DATABASE_PATH for deployment (e.g. absolute path to a mounted volume).
+ * Server-side Postgres client (Supabase). Set DATABASE_URL in Vercel / .env.local.
+ * Uses prepare: false for compatibility with Supabase transaction pooler (PgBouncer).
  */
-export function getDbPath(): string {
-  if (process.env.DATABASE_PATH) {
-    return path.resolve(process.env.DATABASE_PATH);
-  }
-  return path.join(process.cwd(), "..", "shop.db");
-}
-
-function migrate(database: Database.Database) {
-  const shipmentCols = database
-    .prepare(`PRAGMA table_info(shipments)`)
-    .all() as { name: string }[];
-  if (!shipmentCols.some((c) => c.name === "late_delivery_probability")) {
-    database.exec(
-      `ALTER TABLE shipments ADD COLUMN late_delivery_probability REAL`,
-    );
-  }
-
-  const orderCols = database
-    .prepare(`PRAGMA table_info(orders)`)
-    .all() as { name: string }[];
-  if (!orderCols.some((c) => c.name === "fraud_prediction")) {
-    database.exec(`ALTER TABLE orders ADD COLUMN fraud_prediction INTEGER`);
-  }
-  if (!orderCols.some((c) => c.name === "fraud_probability")) {
-    database.exec(`ALTER TABLE orders ADD COLUMN fraud_probability REAL`);
-  }
-  if (!orderCols.some((c) => c.name === "fraud_scored_at")) {
-    database.exec(`ALTER TABLE orders ADD COLUMN fraud_scored_at TEXT`);
-  }
-}
-
-export function getDb(): Database.Database {
-  if (db) return db;
-  const dbPath = getDbPath();
-  if (!fs.existsSync(dbPath)) {
+export function getSql(): Sql {
+  const url = process.env.DATABASE_URL;
+  if (!url?.trim()) {
     throw new Error(
-      `Database file not found at ${dbPath}. Set DATABASE_PATH or place shop.db next to the project.`,
+      "DATABASE_URL is not set. Add your Supabase Postgres connection string (pooler URI recommended for serverless).",
     );
   }
-  const database = new Database(dbPath);
-  database.pragma("journal_mode = WAL");
-  database.pragma("foreign_keys = ON");
-  migrate(database);
-  db = database;
-  return db;
+  if (!sql) {
+    sql = postgres(url, {
+      max: 1,
+      ssl: "require",
+      prepare: false,
+    });
+  }
+  return sql;
 }

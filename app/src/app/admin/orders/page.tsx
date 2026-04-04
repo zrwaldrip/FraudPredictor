@@ -16,7 +16,7 @@ function pct(p: number | null) {
 }
 
 export default async function AdminOrdersPage() {
-  const rows = listAllOrdersForAdmin(2000);
+  const rows = await listAllOrdersForAdmin(2000);
 
   return (
     <div className="mx-auto max-w-6xl">

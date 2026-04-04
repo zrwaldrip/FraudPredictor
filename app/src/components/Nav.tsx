@@ -1,16 +1,15 @@
 import Link from "next/link";
 import { clearCustomer } from "@/app/actions";
 import { getActingCustomerId } from "@/lib/session";
-import { getDb } from "@/lib/db";
+import { getSql } from "@/lib/db";
 
 export async function Nav() {
   const id = await getActingCustomerId();
   let label: string | null = null;
   if (id) {
-    const row = getDb()
-      .prepare(`SELECT full_name FROM customers WHERE customer_id = ?`)
-      .get(id) as { full_name: string } | undefined;
-    label = row?.full_name ?? `Customer #${id}`;
+    const sql = getSql();
+    const [row] = await sql`SELECT full_name FROM customers WHERE customer_id = ${id}`;
+    label = row?.full_name ? String(row.full_name) : `Customer #${id}`;
   }
 
   return (

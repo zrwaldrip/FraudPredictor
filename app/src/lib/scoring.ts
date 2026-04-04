@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { Sql } from "@/lib/db";
 
 type ShipmentRow = {
   shipment_id: number;
@@ -29,24 +29,28 @@ function predictLateDeliveryProbability(r: ShipmentRow): number {
   return Math.min(0.999, Math.max(0.001, p + jitter));
 }
 
-export function runLateDeliveryScoringJob(database: Database.Database): number {
-  const rows = database
-    .prepare(
-      `SELECT shipment_id, promised_days, actual_days, distance_band, shipping_method, late_delivery
-       FROM shipments`,
-    )
-    .all() as ShipmentRow[];
+export async function runLateDeliveryScoringJob(sql: Sql): Promise<number> {
+  const rows = await sql`
+    SELECT shipment_id, promised_days, actual_days, distance_band, shipping_method, late_delivery
+    FROM shipments
+  `;
+  const typed: ShipmentRow[] = rows.map((r) => ({
+    shipment_id: Number(r.shipment_id),
+    promised_days: Number(r.promised_days),
+    actual_days: Number(r.actual_days),
+    distance_band: String(r.distance_band),
+    shipping_method: String(r.shipping_method),
+    late_delivery: Number(r.late_delivery),
+  }));
 
-  const update = database.prepare(
-    `UPDATE shipments SET late_delivery_probability = ? WHERE shipment_id = ?`,
-  );
-
-  const tx = database.transaction(() => {
-    for (const r of rows) {
+  await sql.begin(async (tx) => {
+    const t = tx as unknown as Sql;
+    for (const r of typed) {
       const p = predictLateDeliveryProbability(r);
-      update.run(p, r.shipment_id);
+      await t`
+        UPDATE shipments SET late_delivery_probability = ${p} WHERE shipment_id = ${r.shipment_id}
+      `;
     }
   });
-  tx();
-  return rows.length;
+  return typed.length;
 }

@@ -16,7 +16,7 @@ export default async function CustomerDashboardPage() {
   const id = await getActingCustomerId();
   if (!id) redirect("/");
 
-  const summary = getDashboardSummary(id);
+  const summary = await getDashboardSummary(id);
   if (!summary) redirect("/");
 
   return (
