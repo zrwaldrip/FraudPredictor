@@ -131,7 +131,7 @@ project-root/
 |-------|---------|-------|
 | Web app | **Vercel** | Next.js App Router, Root Directory = `app/` |
 | Database | **Supabase** | Managed Postgres; replaces the local `shop.db` SQLite file |
-| ML pipeline | **Vercel Cron Job** | JS port of notebook logic; runs on a schedule inside the Next.js app |
+| ML pipeline | **Vercel Cron Job** | Python notebook (`Chapter17_Fraud_Pipeline_Heitor.ipynb`) trains on `shop.db` and picks the best model; `scripts/export_to_js_artifact.py` converts the sklearn artifact to `app/artifacts/fraud_pipeline.json`; cron runs in **`FRAUD_PIPELINE_MODE=inference`** (scores only, no training) |
 
 There is **no separate backend service**. All server-side logic (data access, auth cookies, ML scoring) lives in the Next.js app under `app/` and runs on Vercel serverless/edge functions and Cron Jobs.
 
@@ -150,15 +150,16 @@ project-root/
 │   │   │   ├── orders/new/page.tsx   # Place New Order
 │   │   │   ├── warehouse/page.tsx    # Late Delivery Queue
 │   │   │   ├── api/ml/score/route.ts       # POST /api/ml/score (Run Scoring)
-│   │   │   └── api/cron/fraud-train/route.ts # POST /api/cron/fraud-train (cron training)
+│   │   │   └── api/cron/fraud-train/route.ts # GET/POST /api/cron/fraud-train (cron; Vercel uses GET)
 │   │   ├── components/         # Shared UI (Nav, PlaceOrderForm, RunScoringButton)
 │   │   └── lib/                # DB client, queries, scoring logic, session helpers
+│   ├── artifacts/              # fraud_pipeline.json (JS model); exported from Python notebook
+│   ├── scripts/                # train-fraud-artifact.ts (alt JS offline training)
 │   ├── next.config.ts
 │   ├── package.json
 │   └── README.md
-├── artifacts/
-│   └── fraud_pipeline.json     # Serialized JS model + metadata
-├── Chapter17_Fraud_Pipeline_Heitor.ipynb  # Source notebook used for JS conversion
+├── scripts/                               # export_to_js_artifact.py (sklearn → JS JSON)
+├── Chapter17_Fraud_Pipeline_Heitor.ipynb  # Python CRISP-DM notebook (trains on shop.db)
 └── README.md
 ```
 
@@ -195,7 +196,7 @@ project-root/
 
 **How scoring now works (two pipelines):**
 1. **Warehouse button path:** `RunScoringButton` calls `POST /api/ml/score`, which runs `runLateDeliveryScoringJob(db)` and refreshes `/warehouse`.
-2. **Fraud cron path:** Vercel Cron calls `POST /api/cron/fraud-train`, which runs the full CRISP-DM JS training pipeline and writes `app/artifacts/fraud_pipeline.json`.
+2. **Fraud cron path:** Vercel Cron **`GET`s** `/api/cron/fraud-train`. With **`FRAUD_PIPELINE_MODE=inference`**, it loads committed **`app/artifacts/fraud_pipeline.json`** and updates `orders` fraud columns only (fast). The artifact is produced offline: run the **Python notebook** on `shop.db`, then **`python scripts/export_to_js_artifact.py`** to convert the sklearn model to the JS format. Alternative: **`npm run train:fraud`** from `app/` trains the JS pipeline directly against `DATABASE_URL`. Without `inference` mode, cron runs the full JS CRISP-DM train (heavy; often times out on serverless).
 
 **Adding a scheduled Cron Job (Vercel):**
 - `app/vercel.json` should include cron entry for `/api/cron/fraud-train`.

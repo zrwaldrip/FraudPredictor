@@ -21,14 +21,18 @@ Create `app/.env.local` with your Supabase connection string (see below). Ensure
 
 The app uses the [`postgres`](https://github.com/porsager/postgres) client with `prepare: false` for PgBouncer compatibility.
 
-### Fraud model artifact (JS only)
+### Fraud model artifact
 
-The deployed app loads a **JavaScript** serialized model (`ml-random-forest` JSON), not Python joblib/pickle from the course notebook. To refresh the model:
+The deployed app loads a `ml-random-forest` JSON artifact for scoring. The **Python notebook** (`Chapter17_Fraud_Pipeline_Heitor.ipynb`) selects the best model using `shop.db`, then a Python export script converts it to the JS-compatible format.
 
-1. Ensure `DATABASE_URL` points at Postgres with your data (e.g. Supabase; migrate from `shop.db` if needed).
-2. From the **`app/`** directory: **`npm run train:fraud`** — runs full training and writes **`app/artifacts/fraud_pipeline.json`** (the script clears `FRAUD_PIPELINE_MODE` so training always runs).
-3. Commit **`fraud_pipeline.json`** so Vercel bundles it with the deployment.
-4. Set **`FRAUD_PIPELINE_MODE=inference`** on Vercel so scheduled cron only scores using that file.
+**Workflow to generate / refresh the artifact:**
+
+1. **Run the notebook** on `shop.db` (Jupyter or `nbconvert`). It compares logistic regression, random forest, and gradient boosting, tunes the best RF, and saves `artifacts/fraud_pipeline.joblib` + `artifacts/fraud_pipeline_metadata.joblib`.
+2. **Export to JS format** from the repo root: `python scripts/export_to_js_artifact.py` — reads the joblib files and writes `app/artifacts/fraud_pipeline.json`.
+3. **Commit** `app/artifacts/fraud_pipeline.json` so Vercel bundles it.
+4. Set **`FRAUD_PIPELINE_MODE=inference`** on Vercel so cron only scores (no training).
+
+**Alternative (JS-only, needs Postgres data):** `npm run train:fraud` from `app/` trains the JS pipeline directly against `DATABASE_URL` and writes the same JSON artifact.
 
 ## Vercel deployment
 
