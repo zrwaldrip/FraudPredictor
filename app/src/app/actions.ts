@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSql, type Sql } from "@/lib/db";
-import { runFraudPipelineAndWriteback } from "@/lib/fraudNotebookPipeline";
 import { runLateDeliveryScoringJob } from "@/lib/scoring";
 
 const COOKIE = "acting_customer_id";
@@ -162,11 +161,5 @@ export async function setPipelineFraudStatus(formData: FormData) {
     WHERE order_id = ${orderId}
   `;
 
-  revalidatePath("/admin/orders");
-}
-
-export async function runFraudPipelineNow() {
-  const sql = getSql();
-  await runFraudPipelineAndWriteback(sql);
   revalidatePath("/admin/orders");
 }

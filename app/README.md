@@ -34,12 +34,20 @@ The app uses the [`postgres`](https://github.com/porsager/postgres) client with 
 | `/orders` | Order history for selected customer |
 | `/warehouse` | Late delivery priority queue (top 50 by `late_delivery_probability`) |
 | `POST /api/ml/score` | Runs warehouse scoring; updates `shipments.late_delivery_probability` |
-| `POST /api/cron/fraud-train` | Runs full JS fraud training pipeline; writes `artifacts/fraud_pipeline.json` |
+| `GET` / `POST` `/api/cron/fraud-train` | Runs full JS fraud training pipeline; writes model to `/tmp/fraud_pipeline.json` on Vercel, else `artifacts/fraud_pipeline.json` locally |
 
 Schema changes (e.g. `late_delivery_probability`, fraud columns on `orders`) should be applied in Supabase via SQL migrations, not at app startup.
 
 ## Cron pipeline
 
-`app/vercel.json` schedules `POST /api/cron/fraud-train` daily at 03:00 UTC.
+`app/vercel.json` schedules **`/api/cron/fraud-train`** daily at **03:00 UTC**. Vercel Cron invokes that URL with **`GET`** (not POST).
 
-Set `CRON_SECRET` in Vercel and send it as `x-cron-secret` when manually invoking the route.
+Set **`CRON_SECRET`** in Vercel: scheduled runs receive **`Authorization: Bearer <CRON_SECRET>`**. Manual triggers can use the same header or **`x-cron-secret: <CRON_SECRET>`**.
+
+The route sets **`maxDuration = 300`** (seconds); your Vercel plan must allow long enough execution for training.
+
+Example manual GET:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" "https://<your-deployment>/api/cron/fraud-train"
+```

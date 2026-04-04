@@ -1,6 +1,15 @@
 import fs from "fs";
+import os from "node:os";
 import path from "path";
 import type { Sql } from "@/lib/db";
+
+/** Writable path for serialized model; /tmp on Vercel (read-only app dir). */
+export function fraudPipelineArtifactPath(): string {
+  if (process.env.VERCEL === "1") {
+    return path.join(os.tmpdir(), "fraud_pipeline.json");
+  }
+  return path.join(process.cwd(), "artifacts", "fraud_pipeline.json");
+}
 import { RandomForestClassifier } from "ml-random-forest";
 
 export type Row = Record<string, unknown>;
@@ -663,7 +672,7 @@ export async function runFraudNotebookPipeline(
   options?: { artifactPath?: string },
 ): Promise<NotebookParityReport> {
   const artifactPath =
-    options?.artifactPath ?? path.join(process.cwd(), "artifacts", "fraud_pipeline.json");
+    options?.artifactPath ?? fraudPipelineArtifactPath();
 
   // 2. Data Understanding
   const tableRows = await sql`
@@ -841,7 +850,7 @@ export async function runFraudNotebookPipeline(
 }
 
 export function loadFraudPipelineArtifact(
-  artifactPath = path.join(process.cwd(), "artifacts", "fraud_pipeline.json"),
+  artifactPath = fraudPipelineArtifactPath(),
 ): PipelineArtifact {
   if (!fs.existsSync(artifactPath)) {
     throw new Error(`Fraud pipeline artifact not found at ${artifactPath}`);
@@ -873,7 +882,7 @@ export function scoreNewOrdersWithArtifact(
 
 export async function runFraudPipelineAndWriteback(
   sql: Sql,
-  artifactPath = path.join(process.cwd(), "artifacts", "fraud_pipeline.json"),
+  artifactPath = fraudPipelineArtifactPath(),
 ): Promise<{
   report: NotebookParityReport;
   updated: number;
