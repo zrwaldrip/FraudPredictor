@@ -54,6 +54,12 @@ export async function Nav() {
           >
             Warehouse queue
           </Link>
+          <Link
+            href="/admin/orders"
+            className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+          >
+            Admin orders
+          </Link>
         </nav>
         <div className="flex items-center gap-2 text-sm">
           {id && label ? (

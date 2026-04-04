@@ -16,13 +16,26 @@ export function getDbPath(): string {
 }
 
 function migrate(database: Database.Database) {
-  const cols = database
+  const shipmentCols = database
     .prepare(`PRAGMA table_info(shipments)`)
     .all() as { name: string }[];
-  if (!cols.some((c) => c.name === "late_delivery_probability")) {
+  if (!shipmentCols.some((c) => c.name === "late_delivery_probability")) {
     database.exec(
       `ALTER TABLE shipments ADD COLUMN late_delivery_probability REAL`,
     );
+  }
+
+  const orderCols = database
+    .prepare(`PRAGMA table_info(orders)`)
+    .all() as { name: string }[];
+  if (!orderCols.some((c) => c.name === "fraud_prediction")) {
+    database.exec(`ALTER TABLE orders ADD COLUMN fraud_prediction INTEGER`);
+  }
+  if (!orderCols.some((c) => c.name === "fraud_probability")) {
+    database.exec(`ALTER TABLE orders ADD COLUMN fraud_probability REAL`);
+  }
+  if (!orderCols.some((c) => c.name === "fraud_scored_at")) {
+    database.exec(`ALTER TABLE orders ADD COLUMN fraud_scored_at TEXT`);
   }
 }
 
