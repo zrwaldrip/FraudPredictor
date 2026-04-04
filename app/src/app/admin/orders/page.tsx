@@ -1,4 +1,4 @@
-import { runFraudPipelineNow, setPipelineFraudStatus } from "@/app/actions";
+import { setPipelineFraudStatus } from "@/app/actions";
 import { listAllOrdersForAdmin } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -26,16 +26,19 @@ export default async function AdminOrdersPage() {
         training label from{" "}
         <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">orders</code>.
       </p>
-      <div className="mt-4">
-        <form action={runFraudPipelineNow}>
-          <button
-            type="submit"
-            className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
-          >
-            Run fraud pipeline now
-          </button>
-        </form>
-      </div>
+      <p className="mt-4 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
+        Pipeline fraud scores are refreshed by{" "}
+        <strong className="font-medium text-zinc-800 dark:text-zinc-200">
+          Vercel Cron
+        </strong>{" "}
+        (daily at 03:00 UTC — see <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">app/vercel.json</code>
+        ). To run manually: <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">GET</code> or{" "}
+        <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">POST</code>{" "}
+        <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">/api/cron/fraud-train</code> with{" "}
+        <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">Authorization: Bearer &lt;CRON_SECRET&gt;</code>{" "}
+        or header <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">x-cron-secret</code> when{" "}
+        <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">CRON_SECRET</code> is set in Vercel.
+      </p>
 
       <div className="mt-6 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900/40">
         <table className="min-w-full text-left text-sm">
