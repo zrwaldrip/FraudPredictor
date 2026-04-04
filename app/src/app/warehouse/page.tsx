@@ -16,7 +16,7 @@ function pct(p: number | null) {
 }
 
 export default async function WarehouseQueuePage() {
-  const rows = getLateDeliveryQueueTop50();
+  const rows = await getLateDeliveryQueueTop50();
 
   return (
     <div className="mx-auto max-w-6xl">

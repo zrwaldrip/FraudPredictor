@@ -1,6 +1,6 @@
 import path from "path";
 import { NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { getSql } from "@/lib/db";
 import {
   runFraudPipelineAndWriteback,
 } from "@/lib/fraudNotebookPipeline";
@@ -24,10 +24,10 @@ export async function POST(request: Request) {
     if (!isAuthorized(request)) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
-    const db = getDb();
+    const sql = getSql();
     const artifactPath = path.join(process.cwd(), "artifacts", "fraud_pipeline.json");
-    const { report, updated, scored_at } = runFraudPipelineAndWriteback(
-      db,
+    const { report, updated, scored_at } = await runFraudPipelineAndWriteback(
+      sql,
       artifactPath,
     );
 

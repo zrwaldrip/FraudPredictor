@@ -9,7 +9,7 @@ export default async function SelectCustomerPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const sp = await searchParams;
-  const customers = listCustomers();
+  const customers = await listCustomers();
   const errMsg =
     sp.error === "invalid"
       ? "Invalid selection."
@@ -22,9 +22,7 @@ export default async function SelectCustomerPage({
       <h1 className="text-2xl font-semibold tracking-tight">Select customer</h1>
       <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
         No login required. Choose who you are acting as for this session. All
-        data is read and written to the operational{" "}
-        <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-800">shop.db</code>{" "}
-        database.
+        data is read and written to your operational Supabase Postgres database.
       </p>
 
       {errMsg ? (

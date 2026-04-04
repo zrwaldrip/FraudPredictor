@@ -16,7 +16,7 @@ export default async function OrderHistoryPage() {
   const id = await getActingCustomerId();
   if (!id) redirect("/");
 
-  const rows = listOrdersForCustomer(id);
+  const rows = await listOrdersForCustomer(id);
 
   return (
     <div className="mx-auto max-w-4xl">

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Shop Operations — IS455",
-  description: "Customer selection, orders, and warehouse queue backed by shop.db",
+  description: "Customer selection, orders, and warehouse queue backed by Supabase Postgres",
 };
 
 export default function RootLayout({

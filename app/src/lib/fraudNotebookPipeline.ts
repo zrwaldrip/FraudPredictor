@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type Database from "better-sqlite3";
+import type { Sql } from "@/lib/db";
 import { RandomForestClassifier } from "ml-random-forest";
 
 export type Row = Record<string, unknown>;
@@ -591,18 +591,23 @@ function evaluateModel(yTrue: number[], prob: number[]): Record<string, number> 
   };
 }
 
-function joinRelationalTables(database: Database.Database, orders: Row[]): Row[] {
-  const tableRows = database
-    .prepare(`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
-    .all() as Array<{ name: string }>;
-  const tableNames = tableRows.map((r) => r.name);
+async function joinRelationalTables(sql: Sql, orders: Row[]): Promise<Row[]> {
+  const tableRows = await sql`
+    SELECT tablename AS name FROM pg_catalog.pg_tables
+    WHERE schemaname = 'public'
+    ORDER BY tablename
+  `;
+  const tableNames = tableRows.map((r) => String(r.name));
   const model = orders.map((o) => ({ ...o }));
   const modelCols = () => new Set<string>(Object.keys(model[0] ?? {}));
 
   for (const table of tableNames.filter((t) => t !== "orders")) {
-    const cols = (
-      database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
-    ).map((c) => c.name);
+    const colRows = await sql`
+      SELECT column_name AS name
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = ${table}
+    `;
+    const cols = colRows.map((c) => String(c.name));
     const shared = cols.filter((c) => modelCols().has(c) && c !== "is_fraud");
     const preferred = shared.filter(
       (c) =>
@@ -615,12 +620,15 @@ function joinRelationalTables(database: Database.Database, orders: Row[]): Row[]
     );
     if (preferred.length !== 1) continue;
     const key = preferred[0] as string;
-    const uniqueCheck = database
-      .prepare(`SELECT COUNT(*) AS n_rows, COUNT(DISTINCT ${key}) AS n_distinct FROM ${table}`)
-      .get() as { n_rows: number; n_distinct: number };
-    if (uniqueCheck.n_rows !== uniqueCheck.n_distinct) continue;
+    const [uniqueCheck] = await sql`
+      SELECT COUNT(*)::int AS n_rows, COUNT(DISTINCT ${sql(key)})::int AS n_distinct
+      FROM ${sql(table)}
+    `;
+    const nRows = Number(uniqueCheck?.n_rows ?? 0);
+    const nDistinct = Number(uniqueCheck?.n_distinct ?? 0);
+    if (nRows !== nDistinct) continue;
 
-    const right = database.prepare(`SELECT * FROM ${table}`).all() as Row[];
+    const right = (await sql`SELECT * FROM ${sql(table)}`) as Row[];
     const byKey = new Map<string, Row>();
     for (const r of right) byKey.set(String(r[key]), r);
 
@@ -637,10 +645,10 @@ function joinRelationalTables(database: Database.Database, orders: Row[]): Row[]
   return model;
 }
 
-export function buildFraudScoringRows(database: Database.Database): Row[] {
-  const orders = database.prepare(`SELECT * FROM orders`).all() as Row[];
+export async function buildFraudScoringRows(sql: Sql): Promise<Row[]> {
+  const orders = (await sql`SELECT * FROM orders`) as Row[];
   if (!orders.length) return [];
-  const enriched = joinRelationalTables(database, orders);
+  const enriched = await joinRelationalTables(sql, orders);
   return engineerDateFeatures(enriched);
 }
 
@@ -650,32 +658,35 @@ function savePipelineArtifacts(artifactPath: string, artifact: PipelineArtifact)
   fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2), "utf8");
 }
 
-export function runFraudNotebookPipeline(
-  database: Database.Database,
+export async function runFraudNotebookPipeline(
+  sql: Sql,
   options?: { artifactPath?: string },
-): NotebookParityReport {
+): Promise<NotebookParityReport> {
   const artifactPath =
     options?.artifactPath ?? path.join(process.cwd(), "artifacts", "fraud_pipeline.json");
 
   // 2. Data Understanding
-  const tableRows = database
-    .prepare(`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
-    .all() as Array<{ name: string }>;
-  const tableNames = tableRows.map((r) => r.name);
-  const rowCounts = tableNames.map((table) => {
-    const row = database.prepare(`SELECT COUNT(*) AS row_count FROM ${table}`).get() as {
-      row_count: number;
-    };
-    return { table, row_count: row.row_count };
-  });
-  const orders = database.prepare(`SELECT * FROM orders`).all() as Row[];
+  const tableRows = await sql`
+    SELECT tablename AS name FROM pg_catalog.pg_tables
+    WHERE schemaname = 'public'
+    ORDER BY tablename
+  `;
+  const tableNames = tableRows.map((r) => String(r.name));
+  const rowCounts: Array<{ table: string; row_count: number }> = [];
+  for (const table of tableNames) {
+    const [row] = await sql`
+      SELECT COUNT(*)::int AS row_count FROM ${sql(table)}
+    `;
+    rowCounts.push({ table, row_count: Number(row?.row_count ?? 0) });
+  }
+  const orders = (await sql`SELECT * FROM orders`) as Row[];
   if (!orders.length) throw new Error("orders table is empty; cannot train fraud pipeline");
   if (!("is_fraud" in orders[0])) throw new Error("orders table missing is_fraud column");
   const missingByCol = computeMissingCounts(orders);
   void missingByCol; // retained for parity/reporting use if needed later
 
   // 2. Analytic base table via safe single-key joins.
-  const modelRowsRaw = joinRelationalTables(database, orders);
+  const modelRowsRaw = await joinRelationalTables(sql, orders);
   const modelRows = engineerDateFeatures(modelRowsRaw);
 
   // 3. Data preparation
@@ -860,40 +871,36 @@ export function scoreNewOrdersWithArtifact(
     .sort((a, b) => b.fraud_probability - a.fraud_probability);
 }
 
-export function runFraudPipelineAndWriteback(
-  database: Database.Database,
+export async function runFraudPipelineAndWriteback(
+  sql: Sql,
   artifactPath = path.join(process.cwd(), "artifacts", "fraud_pipeline.json"),
-): {
+): Promise<{
   report: NotebookParityReport;
   updated: number;
   scored_at: string;
-} {
-  const report = runFraudNotebookPipeline(database, { artifactPath });
+}> {
+  const report = await runFraudNotebookPipeline(sql, { artifactPath });
   const artifact = loadFraudPipelineArtifact(artifactPath);
-  const scoringRows = buildFraudScoringRows(database);
+  const scoringRows = await buildFraudScoringRows(sql);
   const scored = scoreNewOrdersWithArtifact(scoringRows, artifact);
   const scoredAt = new Date().toISOString().replace("T", " ").slice(0, 19);
 
-  const update = database.prepare(
-    `UPDATE orders
-     SET fraud_prediction = ?, fraud_probability = ?, fraud_scored_at = ?
-     WHERE order_id = ?`,
-  );
-  const tx = database.transaction(() => {
+  await sql.begin(async (tx) => {
+    const t = tx as unknown as Sql;
     for (const row of scored) {
       const orderId = Number(row.order_id);
       if (!Number.isFinite(orderId) || orderId < 1) continue;
       const prediction = Number(row.fraud_prediction) === 1 ? 1 : 0;
       const probability = Number(row.fraud_probability);
-      update.run(
-        prediction,
-        Number.isFinite(probability) ? probability : null,
-        scoredAt,
-        orderId,
-      );
+      await t`
+        UPDATE orders
+        SET fraud_prediction = ${prediction},
+            fraud_probability = ${Number.isFinite(probability) ? probability : null},
+            fraud_scored_at = ${scoredAt}
+        WHERE order_id = ${orderId}
+      `;
     }
   });
-  tx();
 
   return { report, updated: scored.length, scored_at: scoredAt };
 }

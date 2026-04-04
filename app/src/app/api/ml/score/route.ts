@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { getDb } from "@/lib/db";
+import { getSql } from "@/lib/db";
 import { runLateDeliveryScoringJob } from "@/lib/scoring";
 
 export const runtime = "nodejs";
 
 /**
  * POST /api/ml/score — runs late-delivery scoring over all shipments and updates
- * `shipments.late_delivery_probability` in shop.db.
+ * `shipments.late_delivery_probability` in Postgres (Supabase).
  */
 export async function POST() {
   try {
-    const db = getDb();
-    const updated = runLateDeliveryScoringJob(db);
+    const sql = getSql();
+    const updated = await runLateDeliveryScoringJob(sql);
     revalidatePath("/warehouse");
     return NextResponse.json({ ok: true, updated });
   } catch (e) {
